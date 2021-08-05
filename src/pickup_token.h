@@ -33,9 +33,11 @@ struct act_item {
 };
 
 struct pick_drop_selection {
-    item_location target;
-    cata::optional<int> quantity;
-    std::vector<item_location> children;
+    item_location target = item_location();
+    cata::optional<int> quantity = cata::optional<int>();
+    std::vector<item_location> children = std::vector<item_location>();
+
+    pick_drop_selection() = default;
 
     void serialize( JsonOut &jsout ) const;
     void deserialize( JsonIn &jin );
@@ -44,6 +46,14 @@ struct pick_drop_selection {
 struct stacked_items {
     cata::optional<item_stack::iterator> parent;
     std::vector<std::list<item_stack::iterator>> stacked_children;
+
+    stacked_items() = default;
+    // Must be defined elsewhere, otherwise g++-8 complains
+    stacked_items( stacked_items && );
+    stacked_items( const stacked_items & ) = default;
+
+    stacked_items &operator=( const stacked_items & ) = default;
+    stacked_items &operator=( stacked_items && ) = default;
 };
 
 // TODO: This should get information on whether children are consecutive

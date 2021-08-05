@@ -224,8 +224,17 @@ bool pickup::query_thief()
     return false;
 }
 
+namespace pickup
+{
+
+stacked_items::stacked_items( stacked_items &&other )
+    : parent( other.parent )
+    , stacked_children( other.stacked_children )
+{
+}
+
 // Returns false if pickup caused a prompt and the player selected to cancel pickup
-static bool pick_one_up( pickup::pick_drop_selection &selection, bool &got_water,
+static bool pick_one_up( pick_drop_selection &selection, bool &got_water,
                          bool &offered_swap,
                          pickup_map &map_pickup, bool autopickup )
 {
@@ -243,7 +252,10 @@ static bool pick_one_up( pickup::pick_drop_selection &selection, bool &got_water
     //new item (copy)
     item newit = it;
     item leftovers = newit;
-    const cata::optional<int> quantity = selection.quantity;
+    // For some reason, g++-8 fails to notice that *quantity is always defined
+    const cata::optional<int> quantity = selection.quantity ?
+                                         selection.quantity :
+                                         cata::optional<int>();
     std::vector<item_location> &children = selection.children;
 
     if( !newit.is_owned_by( g->u, true ) ) {
@@ -397,9 +409,6 @@ static bool pick_one_up( pickup::pick_drop_selection &selection, bool &got_water
     return picked_up || !did_prompt;
 }
 
-namespace pickup
-{
-
 bool do_pickup( std::vector<pick_drop_selection> &targets, bool autopickup )
 {
     bool got_water = false;
@@ -414,7 +423,7 @@ bool do_pickup( std::vector<pick_drop_selection> &targets, bool autopickup )
 
     bool problem = false;
     while( !problem && u.get_moves() >= 0 && !targets.empty() ) {
-        pick_drop_selection current_target = std::move( targets.back() );
+        pick_drop_selection current_target = targets.back();
         // Whether we pick the item up or not, we're done trying to do so,
         // so remove it from the list.
         targets.pop_back();
@@ -522,7 +531,7 @@ std::vector<stacked_items> stack_for_pickup_ui( const
             for( std::list<item_stack::iterator> &stack : restacked_children ) {
                 const item &stack_top = *stack.front();
                 if( stack_top.display_stacked_with( *it ) ) {
-                    stack.push_back( it );
+                    stack.emplace_back( it );
                     found_stack = true;
                     break;
                 }
@@ -537,15 +546,31 @@ std::vector<stacked_items> stack_for_pickup_ui( const
         []( const std::list<item_stack::iterator> &lhs, const std::list<item_stack::iterator> &rhs ) {
             return *lhs.front() < *rhs.front();
         } );
-        restacked_with_parents.emplace_back( stacked_items{ pr.second.parent, restacked_children } );
+        stacked_items new_element;
+        new_element.parent = pr.second.parent;
+        new_element.stacked_children = restacked_children;
+        restacked_with_parents.emplace_back( new_element );
     }
 
     // Sorting by parent is a bit arbitrary (parent-less go last) - sort by count?
-    std::sort( restacked_with_parents.begin(), restacked_with_parents.end(),
-    []( const stacked_items & lhs, stacked_items & rhs ) {
-        return lhs.parent.has_value() && ( !rhs.parent.has_value() || *lhs.parent < *rhs.parent );
-    } );
 
+    std::sort( restacked_with_parents.begin(), restacked_with_parents.end(),
+    []( const stacked_items & lhs, const stacked_items & rhs ) {
+        //(void)lhs;
+        //(void)rhs;
+        //return true;
+
+        auto left = lhs.parent;
+        auto right = rhs.parent;
+        if( !left.has_value() ) {
+            return true;
+        }
+        if( !right.has_value() ) {
+            return false;
+        }
+        return ( **left ) < ( **right );
+
+    } );
 
     return restacked_with_parents;
 }
